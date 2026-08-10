@@ -13,25 +13,30 @@
     </div>
 
     <!-- 故事内容（上图下文，上下滚动） -->
-    <div v-else class="story-content">
-      <div v-for="(seg, index) in story.segments" :key="index" class="segment">
+    <div v-else class="story-content" ref="contentRef">
+      <div v-for="(seg, segIndex) in story.segments" :key="segIndex" class="segment">
         <!-- 段落插图 -->
         <div class="segment-image">
-          <img v-if="seg.image" :src="seg.image" :alt="`插图${index + 1}`" />
-          <div v-else class="image-placeholder">插图占位 {{ index + 1 }}</div>
+          <img v-if="seg.image" :src="seg.image" :alt="`插图${segIndex + 1}`" />
+          <div v-else class="image-placeholder">插图占位 {{ segIndex + 1 }}</div>
         </div>
-        <!-- 段落文字 -->
+        <!-- 段落文字：按句拆分，支持高亮当前句 -->
         <p class="segment-text" :style="{ fontSize: fontSizeValue + 'px' }">
-          {{ seg.text }}
+          <span
+            v-for="(sentence, senIndex) in getSentences(seg.text)"
+            :key="senIndex"
+            class="sentence"
+            :class="{ highlighted: isHighlighted(segIndex, senIndex) }"
+          >{{ sentence }}</span>
         </p>
       </div>
     </div>
 
     <!-- 底部操作栏（朗读控制 + 字号/语速 + 跳转） -->
     <div v-if="story" class="bottom-bar">
-      <!-- 播放按钮（阶段三实现朗读逻辑） -->
+      <!-- 播放/暂停按钮 -->
       <button class="action-btn play-btn" @click="onPlayClick">
-        {{ isPlaying ? '⏸ 暂停' : '▶ 播放' }}
+        {{ playButtonText }}
       </button>
 
       <!-- 字号切换（阶段四实现持久化） -->
@@ -48,7 +53,7 @@
         </div>
       </div>
 
-      <!-- 语速切换（阶段四实现持久化） -->
+      <!-- 语速切换 -->
       <div class="switch-group">
         <span class="switch-label">语速</span>
         <div class="switch-options">
@@ -57,26 +62,35 @@
             :key="speed.id"
             class="option-btn"
             :class="{ active: currentSpeed === speed.id }"
-            @click="currentSpeed = speed.id"
+            @click="onSpeedChange(speed.id)"
           >{{ speed.name }}</button>
         </div>
       </div>
 
       <!-- 再听一遍 + 下一个 -->
       <div class="action-row">
-        <button class="action-btn" @click="replay">再听一遍</button>
+        <button class="action-btn" @click="onReplayClick">再听一遍</button>
         <button class="action-btn" :disabled="!nextStory" @click="goNext">
           {{ nextStory ? '下一个故事' : '已是最后一个' }}
         </button>
+      </div>
+    </div>
+
+    <!-- 不支持语音 / 错误提示弹窗 -->
+    <div v-if="showTip" class="modal-mask" @click.self="showTip = false">
+      <div class="modal-box">
+        <p class="modal-text">{{ tipMessage }}</p>
+        <button class="modal-btn confirm" @click="showTip = false">知道了</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getStoryById, getNextStoryInCategory } from '../data/stories.js'
+import { useSpeech } from '../utils/useSpeech.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,8 +98,18 @@ const router = useRouter()
 const story = computed(() => getStoryById(route.params.id))
 const nextStory = computed(() => getNextStoryInCategory(route.params.id))
 
-// 朗读状态（阶段三实现真实朗读）
+// 朗读状态
 const isPlaying = ref(false)
+const isPaused = ref(false)
+const hasStarted = ref(false)  // 是否已开始过朗读（用于区分"未播放"和"已停止"）
+
+// 当前高亮的段落索引和句子索引
+const highlightSeg = ref(-1)
+const highlightSen = ref(-1)
+
+// 提示弹窗
+const showTip = ref(false)
+const tipMessage = ref('')
 
 // 字号（默认"大"，阶段四实现本地存储）
 const fontSizes = [
@@ -106,25 +130,114 @@ const speeds = [
 ]
 const currentSpeed = ref('medium')
 
+// 初始化语音工具
+const speech = useSpeech()
+
+// 配置语音回调
+speech.setCallbacks({
+  highlight: (segIndex, senIndex) => {
+    highlightSeg.value = segIndex
+    highlightSen.value = senIndex
+  },
+  start: () => {
+    isPlaying.value = true
+    isPaused.value = false
+    hasStarted.value = true
+  },
+  end: () => {
+    isPlaying.value = false
+    isPaused.value = false
+    hasStarted.value = false
+    highlightSeg.value = -1
+    highlightSen.value = -1
+  },
+  pause: () => {
+    isPaused.value = true
+    isPlaying.value = false
+  },
+  resume: () => {
+    isPaused.value = false
+    isPlaying.value = true
+  }
+})
+
+// 播放按钮文字
+const playButtonText = computed(() => {
+  if (isPlaying.value) return '⏸ 暂停'
+  if (isPaused.value) return '▶ 继续'
+  return '▶ 播放'
+})
+
+// 按句号/问号/感叹号拆分句子
+function getSentences(text) {
+  if (!text) return []
+  const matches = text.match(/[^。！？.!?]+[。！？.!?]+/g)
+  if (matches && matches.length > 0) return matches
+  return [text]
+}
+
+// 判断某段某句是否高亮
+function isHighlighted(segIndex, senIndex) {
+  return highlightSeg.value === segIndex && highlightSen.value === senIndex
+}
+
+// 播放按钮点击
 function onPlayClick() {
-  // 阶段二仅切换按钮文字，阶段三接入真实语音
-  isPlaying.value = !isPlaying.value
+  if (!speech.isSupported()) {
+    tipMessage.value = '当前浏览器不支持语音朗读功能，建议使用 Chrome 浏览器。'
+    showTip.value = true
+    return
+  }
+  if (!story.value) return
+
+  if (isPlaying.value) {
+    // 正在播放 → 暂停
+    speech.pause()
+  } else if (isPaused.value) {
+    // 暂停中 → 继续
+    speech.resume()
+  } else {
+    // 未播放 → 从头开始
+    speech.start(story.value.segments)
+  }
 }
 
-function replay() {
-  // 阶段三实现重新朗读
-  isPlaying.value = true
+// 再听一遍
+function onReplayClick() {
+  if (!speech.isSupported()) {
+    tipMessage.value = '当前浏览器不支持语音朗读功能，建议使用 Chrome 浏览器。'
+    showTip.value = true
+    return
+  }
+  if (!story.value) return
+  speech.replay(story.value.segments)
 }
 
+// 语速切换
+function onSpeedChange(speedId) {
+  currentSpeed.value = speedId
+  speech.setSpeed(speedId)
+}
+
+// 跳到下一个故事
 function goNext() {
+  // 离开前停止朗读
+  speech.stop()
   if (nextStory.value) {
     router.push(`/story/${nextStory.value.id}`)
   }
 }
 
+// 返回首页
 function goBack() {
+  speech.stop()
   router.push('/')
 }
+
+// 组件卸载时停止朗读
+onUnmounted(() => {
+  speech.stop()
+})
 </script>
 
 <style scoped>
@@ -221,6 +334,19 @@ function goBack() {
   text-align: justify;
 }
 
+/* 句子高亮样式 */
+.sentence {
+  transition: background-color 0.2s, color 0.2s;
+  border-radius: 4px;
+  padding: 2px 0;
+}
+
+.sentence.highlighted {
+  background-color: #fff3cd;
+  color: #856404;
+  font-weight: 600;
+}
+
 /* 底部操作栏 */
 .bottom-bar {
   padding: 12px 16px;
@@ -300,5 +426,48 @@ function goBack() {
 
 .action-btn:active:not(:disabled) {
   background: #f5f5f5;
+}
+
+/* 弹窗样式 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 80%;
+  max-width: 300px;
+  text-align: center;
+}
+
+.modal-text {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.modal-btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.modal-btn.confirm {
+  background: #4caf50;
+  color: #fff;
 }
 </style>
