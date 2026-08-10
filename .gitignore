@@ -1,0 +1,40 @@
+# 虚拟环境目录
+venv/
+env/
+.venv/
+.env/
+
+# 依赖目录
+node_modules/
+
+# 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.cache/
+
+# 敏感配置
+.env
+config.local.*
+*.local
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志文件
+*.log
+logs/
+
+# 构建产物
+dist/
+build/
+*.egg-info/
