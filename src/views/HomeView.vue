@@ -54,24 +54,59 @@
         </div>
       </div>
     </div>
+
+    <!-- 操作结果提示 -->
+    <div v-if="showTip" class="modal-mask" @click.self="showTip = false">
+      <div class="modal-box">
+        <p class="modal-text" :class="`tip-${tipType}`">{{ tipMessage }}</p>
+        <button class="modal-btn confirm" @click="showTip = false">知道了</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { categories, stories } from '../data/stories.js'
+import { getReadStoryIds, clearReadStoryIds } from '../utils/storage.js'
 
 const router = useRouter()
+const route = useRoute()
 
 // 默认展开第一个分类，其余折叠
 const expandedCategories = ref([categories[0].id])
 
-// 已读完的故事 ID（阶段二仅做 UI 展示，阶段四实现本地存储逻辑）
+// 已读完的故事 ID（从 localStorage 读取）
 const readStoryIds = ref([])
 
 // 重置确认弹窗
 const showResetConfirm = ref(false)
+
+// 操作结果提示（重置成功/失败）
+const showTip = ref(false)
+const tipMessage = ref('')
+const tipType = ref('info')  // info / success / error
+
+function showTipMessage(message, type = 'info') {
+  tipMessage.value = message
+  tipType.value = type
+  showTip.value = true
+}
+
+function refreshReadList() {
+  readStoryIds.value = getReadStoryIds()
+}
+
+// 页面加载时读取已读列表
+onMounted(refreshReadList)
+
+// 路由回到首页时重新读取已读列表（确保从故事页返回后角标立即刷新）
+watch(() => route.fullPath, (newPath) => {
+  if (newPath === '/' || newPath === '/#/') {
+    refreshReadList()
+  }
+})
 
 function toggleCategory(catId) {
   const index = expandedCategories.value.indexOf(catId)
@@ -91,8 +126,14 @@ function goToStory(id) {
 }
 
 function resetProgress() {
+  const ok = clearReadStoryIds()
   readStoryIds.value = []
   showResetConfirm.value = false
+  if (ok) {
+    showTipMessage('进度已清空', 'success')
+  } else {
+    showTipMessage('重置失败，请检查浏览器存储设置', 'error')
+  }
 }
 </script>
 
@@ -297,5 +338,14 @@ function resetProgress() {
 .modal-btn.confirm {
   background: #ff4d4f;
   color: #fff;
+}
+
+/* 操作提示颜色 */
+.tip-success {
+  color: #4caf50;
+}
+
+.tip-error {
+  color: #ff4d4f;
 }
 </style>

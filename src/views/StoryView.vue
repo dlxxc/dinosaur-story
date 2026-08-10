@@ -87,10 +87,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getStoryById, getNextStoryInCategory } from '../data/stories.js'
 import { useSpeech } from '../utils/useSpeech.js'
+import {
+  getFontSize, setFontSize,
+  getSpeed, setSpeed,
+  addReadStoryId
+} from '../utils/storage.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -111,7 +116,12 @@ const highlightSen = ref(-1)
 const showTip = ref(false)
 const tipMessage = ref('')
 
-// 字号（默认"大"，阶段四实现本地存储）
+function showTipMessage(message) {
+  tipMessage.value = message
+  showTip.value = true
+}
+
+// 字号
 const fontSizes = [
   { id: 'small', name: '小', value: 16 },
   { id: 'medium', name: '中', value: 20 },
@@ -122,7 +132,7 @@ const fontSizeValue = computed(() => {
   return fontSizes.find(s => s.id === currentFontSize.value)?.value || 24
 })
 
-// 语速（默认"适中"，阶段四实现本地存储）
+// 语速
 const speeds = [
   { id: 'slow', name: '慢' },
   { id: 'medium', name: '适中' },
@@ -132,6 +142,31 @@ const currentSpeed = ref('medium')
 
 // 初始化语音工具
 const speech = useSpeech()
+
+// 页面加载：从 localStorage 读取字号、语速偏好
+onMounted(() => {
+  const savedFontSize = getFontSize('large')
+  const savedSpeed = getSpeed('medium')
+  currentFontSize.value = savedFontSize
+  currentSpeed.value = savedSpeed
+  speech.setSpeed(savedSpeed)
+})
+
+// 字号变化：保存到 localStorage
+watch(currentFontSize, (newVal) => {
+  const ok = setFontSize(newVal)
+  if (!ok) {
+    showTipMessage('字号设置保存失败')
+  }
+})
+
+// 语速变化：保存到 localStorage
+watch(currentSpeed, (newVal) => {
+  const ok = setSpeed(newVal)
+  if (!ok) {
+    showTipMessage('语速设置保存失败')
+  }
+})
 
 // 配置语音回调
 speech.setCallbacks({
@@ -150,6 +185,10 @@ speech.setCallbacks({
     hasStarted.value = false
     highlightSeg.value = -1
     highlightSen.value = -1
+    // 朗读全部结束 → 标记已读完
+    if (story.value) {
+      addReadStoryId(story.value.id)
+    }
   },
   pause: () => {
     isPaused.value = true
