@@ -20,15 +20,12 @@
           <img v-if="seg.image" :src="seg.image" :alt="`插图${segIndex + 1}`" />
           <div v-else class="image-placeholder">插图占位 {{ segIndex + 1 }}</div>
         </div>
-        <!-- 段落文字：按句拆分，支持高亮当前句 -->
-        <p class="segment-text" :style="{ fontSize: fontSizeValue + 'px' }">
-          <span
-            v-for="(sentence, senIndex) in getSentences(seg.text)"
-            :key="senIndex"
-            class="sentence"
-            :class="{ highlighted: isHighlighted(segIndex) }"
-          >{{ sentence }}</span>
-        </p>
+        <!-- 段落文字 -->
+        <p
+          class="segment-text"
+          :class="{ highlighted: isHighlighted(segIndex) }"
+          :style="{ fontSize: fontSizeValue + 'px' }"
+        >{{ seg.text }}</p>
       </div>
     </div>
 
@@ -96,24 +93,12 @@ import {
   getSpeed, setSpeed,
   addReadStoryId
 } from '../utils/storage.js'
-import { getStory as getCachedStory } from '../utils/db.js'
 
 const route = useRoute()
 const router = useRouter()
 
-// 离线缓存的故事数据（从 IndexedDB 读取，含 base64 图片）
-const cachedStory = ref(null)
-
-// 优先使用缓存数据（离线时图片可用），否则用 JS 数据
-const story = computed(() => {
-  const baseStory = getStoryById(route.params.id)
-  if (!baseStory) return null
-  // 如果有缓存且缓存有 segments，用缓存的 segments（图片是 base64，离线可用）
-  if (cachedStory.value && cachedStory.value.segments) {
-    return { ...baseStory, segments: cachedStory.value.segments }
-  }
-  return baseStory
-})
+// 直接使用 JS 数据（不再从 IndexedDB 读取缓存）
+const story = computed(() => getStoryById(route.params.id))
 const nextStory = computed(() => getNextStoryInCategory(route.params.id))
 
 // 朗读状态
@@ -121,9 +106,8 @@ const isPlaying = ref(false)
 const isPaused = ref(false)
 const hasStarted = ref(false)  // 是否已开始过朗读（用于区分"未播放"和"已停止"）
 
-// 当前高亮的段落索引和句子索引
+// 当前高亮的段落索引
 const highlightSeg = ref(-1)
-const highlightSen = ref(-1)
 
 // 提示弹窗
 const showTip = ref(false)
@@ -156,23 +140,13 @@ const currentSpeed = ref('medium')
 // 初始化语音工具
 const speech = useSpeech()
 
-// 页面加载：从 localStorage 读取字号、语速偏好 + 检查 IndexedDB 缓存
-onMounted(async () => {
+// 页面加载：从 localStorage 读取字号、语速偏好
+onMounted(() => {
   const savedFontSize = getFontSize('large')
   const savedSpeed = getSpeed('medium')
   currentFontSize.value = savedFontSize
   currentSpeed.value = savedSpeed
   speech.setSpeed(savedSpeed)
-
-  // 检查是否已下载（IndexedDB），有则用缓存的 segments（含 base64 图片）
-  try {
-    const cached = await getCachedStory(route.params.id)
-    if (cached) {
-      cachedStory.value = cached
-    }
-  } catch (e) {
-    console.warn('读取离线缓存失败：', e)
-  }
 })
 
 // 字号变化：保存到 localStorage
@@ -193,10 +167,9 @@ watch(currentSpeed, (newVal) => {
 
 // 配置语音回调
 speech.setCallbacks({
-  // 新方案按"段"高亮（WAV 按段生成），segIndex 为当前播放段索引
+  // 按"段"高亮（WAV 按段生成），segIndex 为当前播放段索引
   highlight: (segIndex) => {
     highlightSeg.value = segIndex
-    highlightSen.value = 0
   },
   start: () => {
     isPlaying.value = true
@@ -208,7 +181,6 @@ speech.setCallbacks({
     isPaused.value = false
     hasStarted.value = false
     highlightSeg.value = -1
-    highlightSen.value = -1
     // 朗读全部结束 → 标记已读完
     if (story.value) {
       addReadStoryId(story.value.id)
@@ -231,15 +203,7 @@ const playButtonText = computed(() => {
   return '▶ 播放'
 })
 
-// 按句号/问号/感叹号拆分句子
-function getSentences(text) {
-  if (!text) return []
-  const matches = text.match(/[^。！？.!?]+[。！？.!?]+/g)
-  if (matches && matches.length > 0) return matches
-  return [text]
-}
-
-// 判断某段是否高亮（新方案：按段高亮，整段文字一起变色）
+// 判断某段是否高亮
 function isHighlighted(segIndex) {
   return highlightSeg.value === segIndex
 }
@@ -395,16 +359,12 @@ onUnmounted(() => {
   color: #333;
   line-height: 1.8;
   text-align: justify;
-}
-
-/* 句子高亮样式 */
-.sentence {
   transition: background-color 0.2s, color 0.2s;
   border-radius: 4px;
-  padding: 2px 0;
+  padding: 2px 4px;
 }
 
-.sentence.highlighted {
+.segment-text.highlighted {
   background-color: #fff3cd;
   color: #856404;
   font-weight: 600;

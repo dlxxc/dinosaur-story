@@ -39,33 +39,7 @@
               <span class="story-title">{{ story.title }}</span>
               <div class="badge-row">
                 <span v-if="readStoryIds.includes(story.id)" class="read-badge">已读完</span>
-                <span v-if="downloadedIds.includes(story.id)" class="downloaded-badge">已下载</span>
-                <span v-if="downloadingStory === story.id" class="downloading-text">下载中 {{ downloadProgress }}%</span>
               </div>
-            </div>
-
-            <!-- 右侧操作按钮 -->
-            <div class="card-actions">
-              <!-- 未下载：显示下载按钮 -->
-              <button
-                v-if="!downloadedIds.includes(story.id) && downloadingStory !== story.id"
-                class="action-icon download-icon"
-                @click.stop="downloadStory(story)"
-                title="下载"
-              >⬇</button>
-
-              <!-- 下载中：显示进度条 -->
-              <div v-if="downloadingStory === story.id" class="progress-ring" title="下载中">
-                <span class="progress-text">{{ downloadProgress }}%</span>
-              </div>
-
-              <!-- 已下载：显示删除按钮 -->
-              <button
-                v-if="downloadedIds.includes(story.id)"
-                class="action-icon delete-icon"
-                @click.stop="confirmDelete(story)"
-                title="删除下载"
-              >🗑</button>
             </div>
           </div>
         </div>
@@ -79,17 +53,6 @@
         <div class="modal-actions">
           <button class="modal-btn cancel" @click="showResetConfirm = false">取消</button>
           <button class="modal-btn confirm" @click="resetProgress">确定</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 删除下载确认弹窗 -->
-    <div v-if="showDeleteConfirm" class="modal-mask" @click.self="showDeleteConfirm = false">
-      <div class="modal-box">
-        <p class="modal-text">确定要删除该故事的下载内容吗？</p>
-        <div class="modal-actions">
-          <button class="modal-btn cancel" @click="showDeleteConfirm = false">取消</button>
-          <button class="modal-btn confirm" @click="deleteDownloaded">确定</button>
         </div>
       </div>
     </div>
@@ -109,12 +72,6 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { categories, stories } from '../data/stories.js'
 import { getReadStoryIds, clearReadStoryIds } from '../utils/storage.js'
-import {
-  isSupported as isIDBSupported,
-  saveStory,
-  deleteStory,
-  getDownloadedIds
-} from '../utils/db.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -125,24 +82,13 @@ const expandedCategories = ref([categories[0].id])
 // 已读完的故事 ID（从 localStorage 读取）
 const readStoryIds = ref([])
 
-// 已下载的故事 ID 列表（从 IndexedDB 读取）
-const downloadedIds = ref([])
-
-// 正在下载的故事 ID（null 表示无下载任务）
-const downloadingStory = ref(null)
-const downloadProgress = ref(0)
-
 // 重置确认弹窗
 const showResetConfirm = ref(false)
 
-// 删除下载确认弹窗
-const showDeleteConfirm = ref(false)
-const deleteTargetStory = ref(null)
-
-// 操作结果提示（重置成功/失败）
+// 操作结果提示
 const showTip = ref(false)
 const tipMessage = ref('')
-const tipType = ref('info')  // info / success / error
+const tipType = ref('info')
 
 function showTipMessage(message, type = 'info') {
   tipMessage.value = message
@@ -154,27 +100,15 @@ function refreshReadList() {
   readStoryIds.value = getReadStoryIds()
 }
 
-// 刷新已下载列表
-async function refreshDownloadedIds() {
-  if (!isIDBSupported()) return
-  try {
-    downloadedIds.value = await getDownloadedIds()
-  } catch (e) {
-    console.warn('读取已下载列表失败：', e)
-  }
-}
-
-// 页面加载时读取已读列表 + 已下载列表
+// 页面加载时读取已读列表
 onMounted(() => {
   refreshReadList()
-  refreshDownloadedIds()
 })
 
-// 路由回到首页时重新读取已读列表和已下载列表
+// 路由回到首页时重新读取已读列表
 watch(() => route.fullPath, (newPath) => {
   if (newPath === '/' || newPath === '/#/') {
     refreshReadList()
-    refreshDownloadedIds()
   }
 })
 
@@ -203,100 +137,6 @@ function resetProgress() {
     showTipMessage('进度已清空', 'success')
   } else {
     showTipMessage('重置失败，请检查浏览器存储设置', 'error')
-  }
-}
-
-// 下载故事
-async function downloadStory(story) {
-  if (!isIDBSupported()) {
-    showTipMessage('当前浏览器不支持离线下载功能', 'error')
-    return
-  }
-
-  downloadingStory.value = story.id
-  downloadProgress.value = 0
-
-  try {
-    // 深拷贝 story，避免污染内存中的原始数据
-    const storyToSave = JSON.parse(JSON.stringify(story))
-    const segments = storyToSave.segments
-    const totalSegments = segments.length
-
-    // 逐段处理：将图片和音频转成 base64 存入 IndexedDB（离线可用）
-    for (let i = 0; i < totalSegments; i++) {
-      const seg = segments[i]
-
-      // 如果插图不是 base64（相对路径或 http URL），尝试 fetch 转 base64 存储
-      if (seg.image && !seg.image.startsWith('data:')) {
-        try {
-          const res = await fetch(seg.image)
-          const blob = await res.blob()
-          seg.image = await blobToBase64(blob)
-        } catch (e) {
-          console.warn(`图片下载失败[${seg.image}]：`, e)
-          // 图片下载失败不中断，用原 URL 降级
-        }
-      }
-
-      // 如果音频不是 base64，尝试 fetch 转 base64 存储
-      if (seg.audio && !seg.audio.startsWith('data:')) {
-        try {
-          const res = await fetch(seg.audio)
-          const blob = await res.blob()
-          seg.audio = await blobToBase64(blob)
-        } catch (e) {
-          console.warn(`音频下载失败[${seg.audio}]：`, e)
-          // 音频下载失败不中断，用原 URL 降级（在线时仍可播放）
-        }
-      }
-
-      // 更新进度
-      downloadProgress.value = Math.round(((i + 1) / totalSegments) * 100)
-    }
-
-    // 存入 IndexedDB
-    await saveStory(storyToSave)
-    await refreshDownloadedIds()
-    showTipMessage('下载完成', 'success')
-  } catch (e) {
-    console.error('下载失败：', e)
-    showTipMessage('下载失败，请重试', 'error')
-  } finally {
-    downloadingStory.value = null
-    downloadProgress.value = 0
-  }
-}
-
-// 图片 blob 转 base64
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
-}
-
-// 确认删除下载
-function confirmDelete(story) {
-  deleteTargetStory.value = story
-  showDeleteConfirm.value = true
-}
-
-// 执行删除
-async function deleteDownloaded() {
-  const story = deleteTargetStory.value
-  if (!story) return
-  showDeleteConfirm.value = false
-  try {
-    await deleteStory(story.id)
-    await refreshDownloadedIds()
-    showTipMessage('已删除下载内容', 'success')
-  } catch (e) {
-    console.error('删除失败：', e)
-    showTipMessage('删除失败，请重试', 'error')
-  } finally {
-    deleteTargetStory.value = null
   }
 }
 </script>
@@ -451,69 +291,10 @@ async function deleteDownloaded() {
   border-radius: 10px;
 }
 
-.downloaded-badge {
-  display: inline-block;
-  width: fit-content;
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #2196f3;
-  color: #fff;
-  border-radius: 10px;
-}
-
 .badge-row {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.downloading-text {
-  font-size: 11px;
-  color: #2196f3;
-}
-
-/* 卡片右侧操作按钮 */
-.card-actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-}
-
-.action-icon {
-  border: none;
-  background: none;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-}
-
-.download-icon {
-  color: #2196f3;
-}
-
-.delete-icon {
-  color: #999;
-}
-
-.action-icon:active {
-  opacity: 0.6;
-}
-
-.progress-ring {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.progress-text {
-  font-size: 10px;
-  color: #2196f3;
-  font-weight: 600;
 }
 
 /* 弹窗样式 */
@@ -565,7 +346,7 @@ async function deleteDownloaded() {
 }
 
 .modal-btn.confirm {
-  background: #ff4d4f;
+  background: #4caf50;
   color: #fff;
 }
 
