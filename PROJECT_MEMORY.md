@@ -213,6 +213,7 @@
 | 2026-08-11 | 离线功能移除：因荣耀手机浏览器兼容性问题（SW 注册失败 + base64 WAV 播放失败），用户决策取消离线下载功能。删除 public/sw.js、src/utils/db.js、tests/test_db.js；清理 main.js（SW 注册）、HomeView.vue（下载/删除 UI+逻辑）、StoryView.vue（IndexedDB 缓存读取）。应用改为需联网访问，19/19 自动化检查通过 | 开发 + 产品经理 |
 | 2026-08-11 | 荣耀手机验证通过：播放 + 段落高亮功能在荣耀手机自带浏览器上测试正常。阶段七兼容性测试（基础部分）通过 | 开发 + 产品经理 |
 | 2026-08-11 | 阶段七完整测试完成：①自动化代码层测试 369/370 通过（storage 24/24、资源核对 124/124、stories 逻辑 220/221、build 0 错误）；②移动端兼容性代码审计 14 项 API 全通过（华为 Chromium 内核无风险、iPhone Safari iOS 14.5+ 全支持）；③电脑浏览器两轮人工验收全部通过（30/30 检查点：首页结构/分类折叠/重置进度/详情页/播放高亮/暂停继续/字号语速/下一个故事/已读完标记/持久化/Console 无报错/Network 无 404）。华为/苹果因无实机无法做播放实机验证，但代码审计无高风险项 | 开发 + 产品经理 |
+| 2026-08-11 | 阶段八部署完成（双方案）：**方案A 局域网部署** — dev server 运行中，手机同 WiFi 访问 `http://192.168.0.107:5173/`；**方案B GitHub Pages** — 仓库 `dlxxc/dinosaur-story`（public），GitHub Actions 自动构建部署，访问地址 `https://dlxxc.github.io/dinosaur-story/`（HTTP 200 验证通过）。vite.config.js 配置 production base `/dinosaur-story/`，dev 保持 `/`；SSH 协议推送（SSH key 已关联 GitHub） | 开发 |
 
 ---
 
@@ -231,7 +232,7 @@
 - [x] TTS 音频生成：62 段 WAV 文件全部生成完毕（音色 zf_xiaoyi，24kHz，位于 public/audio/）
 - [x] 前端 TTS 切换：stories.js 添加 audio 字段；useSpeech.js 重写为 `new Audio()` 方案；StoryView.vue 高亮改为段落级
 - [x] 阶段七：兼容性测试（荣耀手机实机通过 ✅ + 电脑浏览器两轮验收通过 ✅ + 华为/Safari 代码审计通过 ✅）
-- [ ] 阶段八：验收与部署
+- [x] 阶段八：验收与部署（方案A 局域网 ✅ + 方案B GitHub Pages ✅）
 
 ---
 
