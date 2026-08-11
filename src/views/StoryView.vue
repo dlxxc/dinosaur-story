@@ -199,6 +199,14 @@ speech.setCallbacks({
   resume: () => {
     isPaused.value = false
     isPlaying.value = true
+  },
+  // 播放错误 → 只提示错误，不标记已读完
+  error: (msg) => {
+    isPlaying.value = false
+    isPaused.value = false
+    hasStarted.value = false
+    highlightSeg.value = -1
+    showTipMessage(msg)
   }
 })
 

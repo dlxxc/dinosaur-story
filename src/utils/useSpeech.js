@@ -7,6 +7,9 @@
 // 2. 语速通过 playbackRate 调节，会同时改变音调（慢速偏低沉，快速偏尖锐）
 // 3. 不再依赖浏览器 SpeechSynthesis 支持，全平台兼容
 
+// 拼接 Vite base 路径（dev: '/' / prod: '/dinosaur-story/'）
+const BASE_URL = import.meta.env.BASE_URL
+
 // 语速档位映射（playbackRate：1 为正常语速）
 const SPEED_MAP = {
   slow: 0.8,
@@ -26,7 +29,8 @@ export function useSpeech() {
 
   // 回调函数（由调用方设置）
   let onHighlight = null    // (segmentIndex) => void  高亮某段
-  let onEnd = null          // () => void  朗读结束
+  let onEnd = null          // () => void  朗读结束（全部读完时触发）
+  let onError = null        // (message) => void  播放错误（不标记已读完）
   let onStart = null        // () => void  朗读开始
   let onPause = null        // () => void  暂停
   let onResume = null       // () => void  继续
@@ -36,9 +40,10 @@ export function useSpeech() {
     return typeof window !== 'undefined' && typeof document !== 'undefined'
   }
 
-  function setCallbacks({ highlight, end, start, pause, resume } = {}) {
+  function setCallbacks({ highlight, end, error, start, pause, resume } = {}) {
     onHighlight = highlight
     onEnd = end
+    onError = error
     onStart = start
     onPause = pause
     onResume = resume
@@ -66,11 +71,11 @@ export function useSpeech() {
         if (onEnd) onEnd()
       }
     })
-    // 加载或播放错误 → 提示并停止
+    // 加载或播放错误 → 停止并通知（不触发 onEnd，不标记已读完）
     audioEl.addEventListener('error', (e) => {
       console.error('音频播放错误:', e, '当前段:', currentIndex, '源:', audioEl.src)
       isPaused = false
-      if (onEnd) onEnd()
+      if (onError) onError('音频加载失败，请检查网络连接')
     })
     return audioEl
   }
