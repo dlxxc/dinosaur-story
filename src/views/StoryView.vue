@@ -17,7 +17,7 @@
       <div v-for="(seg, segIndex) in story.segments" :key="segIndex" class="segment">
         <!-- 段落插图 -->
         <div class="segment-image">
-          <img v-if="seg.image" :src="seg.image" :alt="`插图${segIndex + 1}`" />
+          <img v-if="seg.image" :src="resolveAsset(seg.image)" :alt="`插图${segIndex + 1}`" />
           <div v-else class="image-placeholder">插图占位 {{ segIndex + 1 }}</div>
         </div>
         <!-- 段落文字 -->
@@ -96,6 +96,12 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+
+// 拼接 Vite base 路径（dev: '/' / prod: '/dinosaur-story/'）
+const BASE_URL = import.meta.env.BASE_URL
+function resolveAsset(path) {
+  return BASE_URL + path.replace(/^\//, '')
+}
 
 // 直接使用 JS 数据（不再从 IndexedDB 读取缓存）
 const story = computed(() => getStoryById(route.params.id))

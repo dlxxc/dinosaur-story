@@ -30,7 +30,7 @@
           >
             <!-- 缩略图 -->
             <div class="story-thumb">
-              <img v-if="story.segments[0].image" :src="story.segments[0].image" :alt="story.title" />
+              <img v-if="story.segments[0].image" :src="resolveAsset(story.segments[0].image)" :alt="story.title" />
               <div v-else class="thumb-placeholder">插图占位</div>
             </div>
 
@@ -75,6 +75,12 @@ import { getReadStoryIds, clearReadStoryIds } from '../utils/storage.js'
 
 const router = useRouter()
 const route = useRoute()
+
+// 拼接 Vite base 路径（dev: '/' / prod: '/dinosaur-story/'）
+const BASE_URL = import.meta.env.BASE_URL
+function resolveAsset(path) {
+  return BASE_URL + path.replace(/^\//, '')
+}
 
 // 默认展开第一个分类，其余折叠
 const expandedCategories = ref([categories[0].id])

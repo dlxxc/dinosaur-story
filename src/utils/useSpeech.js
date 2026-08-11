@@ -97,7 +97,7 @@ export function useSpeech() {
       return
     }
     const el = ensureAudioEl()
-    el.src = seg.audio
+    el.src = BASE_URL + seg.audio.replace(/^\//, '')
     el.playbackRate = SPEED_MAP[speed] || 1.0
     // 高亮当前段
     if (onHighlight) onHighlight(index)
