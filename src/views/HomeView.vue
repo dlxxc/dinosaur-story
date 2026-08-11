@@ -30,7 +30,7 @@
           >
             <!-- 缩略图 -->
             <div class="story-thumb">
-              <img v-if="story.segments[0].image" :src="resolveAsset(story.segments[0].image)" :alt="story.title" />
+              <img v-if="story.segments[0].image" :src="resolveAsset(story.segments[0].image)" :alt="story.title" loading="lazy" decoding="async" />
               <div v-else class="thumb-placeholder">插图占位</div>
             </div>
 

@@ -17,7 +17,7 @@
       <div v-for="(seg, segIndex) in story.segments" :key="segIndex" class="segment">
         <!-- 段落插图 -->
         <div class="segment-image">
-          <img v-if="seg.image" :src="resolveAsset(seg.image)" :alt="`插图${segIndex + 1}`" />
+          <img v-if="seg.image" :src="resolveAsset(seg.image)" :alt="`插图${segIndex + 1}`" loading="lazy" decoding="async" />
           <div v-else class="image-placeholder">插图占位 {{ segIndex + 1 }}</div>
         </div>
         <!-- 段落文字 -->
