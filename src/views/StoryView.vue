@@ -26,7 +26,7 @@
             v-for="(sentence, senIndex) in getSentences(seg.text)"
             :key="senIndex"
             class="sentence"
-            :class="{ highlighted: isHighlighted(segIndex, senIndex) }"
+            :class="{ highlighted: isHighlighted(segIndex) }"
           >{{ sentence }}</span>
         </p>
       </div>
@@ -96,11 +96,24 @@ import {
   getSpeed, setSpeed,
   addReadStoryId
 } from '../utils/storage.js'
+import { getStory as getCachedStory } from '../utils/db.js'
 
 const route = useRoute()
 const router = useRouter()
 
-const story = computed(() => getStoryById(route.params.id))
+// 离线缓存的故事数据（从 IndexedDB 读取，含 base64 图片）
+const cachedStory = ref(null)
+
+// 优先使用缓存数据（离线时图片可用），否则用 JS 数据
+const story = computed(() => {
+  const baseStory = getStoryById(route.params.id)
+  if (!baseStory) return null
+  // 如果有缓存且缓存有 segments，用缓存的 segments（图片是 base64，离线可用）
+  if (cachedStory.value && cachedStory.value.segments) {
+    return { ...baseStory, segments: cachedStory.value.segments }
+  }
+  return baseStory
+})
 const nextStory = computed(() => getNextStoryInCategory(route.params.id))
 
 // 朗读状态
@@ -143,13 +156,23 @@ const currentSpeed = ref('medium')
 // 初始化语音工具
 const speech = useSpeech()
 
-// 页面加载：从 localStorage 读取字号、语速偏好
-onMounted(() => {
+// 页面加载：从 localStorage 读取字号、语速偏好 + 检查 IndexedDB 缓存
+onMounted(async () => {
   const savedFontSize = getFontSize('large')
   const savedSpeed = getSpeed('medium')
   currentFontSize.value = savedFontSize
   currentSpeed.value = savedSpeed
   speech.setSpeed(savedSpeed)
+
+  // 检查是否已下载（IndexedDB），有则用缓存的 segments（含 base64 图片）
+  try {
+    const cached = await getCachedStory(route.params.id)
+    if (cached) {
+      cachedStory.value = cached
+    }
+  } catch (e) {
+    console.warn('读取离线缓存失败：', e)
+  }
 })
 
 // 字号变化：保存到 localStorage
@@ -170,9 +193,10 @@ watch(currentSpeed, (newVal) => {
 
 // 配置语音回调
 speech.setCallbacks({
-  highlight: (segIndex, senIndex) => {
+  // 新方案按"段"高亮（WAV 按段生成），segIndex 为当前播放段索引
+  highlight: (segIndex) => {
     highlightSeg.value = segIndex
-    highlightSen.value = senIndex
+    highlightSen.value = 0
   },
   start: () => {
     isPlaying.value = true
@@ -215,15 +239,15 @@ function getSentences(text) {
   return [text]
 }
 
-// 判断某段某句是否高亮
-function isHighlighted(segIndex, senIndex) {
-  return highlightSeg.value === segIndex && highlightSen.value === senIndex
+// 判断某段是否高亮（新方案：按段高亮，整段文字一起变色）
+function isHighlighted(segIndex) {
+  return highlightSeg.value === segIndex
 }
 
 // 播放按钮点击
 function onPlayClick() {
   if (!speech.isSupported()) {
-    tipMessage.value = '当前浏览器不支持语音朗读功能，建议使用 Chrome 浏览器。'
+    tipMessage.value = '当前浏览器不支持音频播放功能。'
     showTip.value = true
     return
   }
@@ -244,7 +268,7 @@ function onPlayClick() {
 // 再听一遍
 function onReplayClick() {
   if (!speech.isSupported()) {
-    tipMessage.value = '当前浏览器不支持语音朗读功能，建议使用 Chrome 浏览器。'
+    tipMessage.value = '当前浏览器不支持音频播放功能。'
     showTip.value = true
     return
   }
