@@ -1,0 +1,5 @@
+torch
+kokoro
+soundfile
+numpy
+misaki[zh]

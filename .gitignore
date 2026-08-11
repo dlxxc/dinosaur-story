@@ -38,3 +38,6 @@ logs/
 dist/
 build/
 *.egg-info/
+
+# 工具产物
+.firecrawl/
